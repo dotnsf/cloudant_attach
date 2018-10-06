@@ -1,0 +1,224 @@
+<html>
+<head>
+<meta charset="utf8"/>
+<script src="//code.jquery.com/jquery-2.0.3.min.js"></script>
+<link href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" rel="stylesheet"/>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+<link href="//use.fontawesome.com/releases/v5.0.6/css/all.css" rel="stylesheet"/>
+<script src="/js/cvi_busy_lib.js"></script>
+
+<title>Cloudant Attachment</title>
+<script>
+$(function(){
+  showRecords();
+});
+
+function pushRecord(){
+  var type = 'POST';
+  var form = $('#form1').get()[0];
+  var data = new FormData( form );
+
+  var text = $('#text').val() ? $('#text').val() : '';
+  data.append( 'text', text );
+  var _id = $('#_id').val();
+  if( _id ){
+    data.append( 'id', _id );
+    type = 'PUT';
+  }
+  //console.log( data );
+
+  var obj = getBusyOverlay( 'viewport', {color:'black', opacity:0.5, text:'loading', style:'text-decoration:blink; font-weight:bold; font-size:12px; color:white;' } );
+  $.ajax({
+    type: type,
+    url: '/doc',
+    data: data,
+    processData: false,
+    contentType: false,
+    success: function( result ){
+      obj.remove();
+      console.log( result );
+      showRecords();
+    },
+    error: function( err ){
+      obj.remove();
+      console.log( err );
+      showRecords();
+    }
+  });
+
+  $('#_id').val( '' );
+  $('#text').val( '' );
+}
+
+function showRecords(){
+  //. statedb
+  $('#records_tbody').html( '' );
+
+  var obj = getBusyOverlay( 'viewport', {color:'black', opacity:0.5, text:'loading', style:'text-decoration:blink; font-weight:bold; font-size:12px; color:white;' } );
+  $.ajax({
+    type: 'GET',
+    url: '/docs',
+    success: function( result ){
+      obj.remove();
+      console.log( result );
+      if( result.status && result.docs.length ){
+        result.docs.forEach( function( doc ){
+          var tr = '<tr>'
+            + '<td>' + doc._id + '</td>'
+            + '<td><img src="/doc/' + doc._id + '/attachment" width="50"/></td>'
+            + '<td>' + doc.text + '</td>'
+            + '<td>' + timestamp2datetime( doc.updated ) + '</td>'
+            + '<td>'
+            + "<button class='btn btn-success' data-toggle='modal' data-target='#myModal' title='revisions' onClick='showRevHistory(\"" + doc._id + "\")'><i class='far fa-copy'></i> </button>"
+            + "<button class='btn btn-info' title='edit' onClick='editRecord(" + JSON.stringify( doc ) + ")'><i class='far fa-edit'></i> </button>"
+            + "<button class='btn btn-warning' title='delete' onClick='deleteRecord(\"" + doc._id + "\")'><i class='fas fa-trash-alt'></i> </button>"
+            + '</td>'
+            + '</tr>';
+          $('#records_tbody').append( tr );
+        });
+      }
+      var tr = '<tr>'
+        + '<td> - <input type="hidden" id="_id" value=""/></td>'
+        + '<td><form id="form1" enctype="multipart/form-data"><input type="file" class="form-control" name="image" id="image"/></form></td>'
+        + '<td><input type="text" class="form-control" id="text" value=""/></td>'
+        + '<td> - </td>'
+        + '<td><button class="btn btn-info" title="save" onClick="pushRecord();"><i class="fas fa-save"></i> </button></td>'
+        + '</tr>';
+      $('#records_tbody').append( tr );
+    },
+    error: function( err ){
+      obj.remove();
+      console.log( err );
+    }
+  });
+}
+
+function deleteRecord( record_id ){
+  if( record_id ){
+    if( window.confirm( '指定レコードを削除します。よろしいですか？' ) ){
+      var obj = getBusyOverlay( 'viewport', {color:'black', opacity:0.5, text:'loading', style:'text-decoration:blink; font-weight:bold; font-size:12px; color:white;' } );
+      $.ajax({
+        type: 'DELETE',
+        url: '/doc/' + record_id,
+        success: function( result ){
+          obj.remove();
+          console.log( result );
+
+          showRecords();
+        },
+        error: function( err ){
+          obj.remove();
+          console.log( err );
+        }
+      });
+    }
+  }
+}
+
+function editRecord( record ){
+  console.log( 'editRecord' );
+  console.log( record );
+  if( record._id ){
+    $('#_id').val( record._id );
+  }else{
+    $('#_id').val( '' );
+  }
+  if( record.text ){
+    $('#text').val( record.text );
+  }else{
+    $('#text').val( '' );
+  }
+}
+
+function showRevHistory( doc_id ){
+  if( doc_id ){
+    $('#rev_list').html( '' );
+    getAllRevs( doc_id );
+  }
+}
+
+//. https://stackoverflow.com/questions/4966427/getting-full-list-of-revisions-on-document-level-using-couchdb-python
+function getAllRevs( doc_id ){
+  $('#rev_list').html( '' );
+  var obj = getBusyOverlay( 'viewport', {color:'black', opacity:0.5, text:'loading', style:'text-decoration:blink; font-weight:bold; font-size:12px; color:white;' } );
+  $.ajax({
+    type: 'GET',
+    url: '/revs/' + doc_id,
+    success: function( result ){
+      obj.remove();
+      console.log( result );
+
+      if( result.status && result.docs && result.docs.length ){
+        result.docs.forEach( function( doc ){
+          $('#rev_list').append( '<li class="list-group-item">' + JSON.stringify( doc, null, 2 ) + '</li>' );
+        });
+      }
+    },
+    error: function( err ){
+      obj.remove();
+      console.log( err );
+    }
+  });
+}
+
+
+function timestamp2datetime( ts ){
+  var dt = new Date( ts );
+  var yyyy = dt.getFullYear();
+  var mm = dt.getMonth() + 1;
+  var dd = dt.getDate();
+  var hh = dt.getHours();
+  var nn = dt.getMinutes();
+  var ss = dt.getSeconds();
+  var datetime = yyyy + '-' + ( mm < 10 ? '0' : '' ) + mm + '-' + ( dd < 10 ? '0' : '' ) + dd
+    + ' ' + ( hh < 10 ? '0' : '' ) + hh + ':' + ( nn < 10 ? '0' : '' ) + nn + ':' + ( ss < 10 ? '0' : '' ) + ss;
+  return datetime;
+}
+
+</script>
+<style>
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-light bg-light index-header">
+  <div class="container-fluid">
+    <div class="navbar-header">
+      <a class="navbar-brand" href="#">Cloudant Attachment</a>
+    </div>
+    <ul class="nav navbar-nav navbar-right" id="navbar">
+    </ul>
+</nav>
+
+<div class="container">
+<table class="table table-bordered table-striped" id="records_table">
+  <thead>
+    <tr><th>#</th><th>image</th><th>text</th><th>updated</th><th>action</th></tr>
+  </thead>
+  <tbody id="records_tbody">
+  </tbody>
+</table>
+</div>
+
+<div class="modal bd-example-modal-lg fade" id="myModal" tabindex="-1" role="dialog" aria-labbelledby="myModal" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 class="modal-title" id="myModalLabel">全リビジョン</h4>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <ul id="rev_list" class="list-group">
+        </ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
