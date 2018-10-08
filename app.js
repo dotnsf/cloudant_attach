@@ -46,9 +46,9 @@ app.use( bodyParser.urlencoded( { extended: true, limit: '10mb' } ) );
 //app.use( bodyParser.urlencoded() );
 app.use( bodyParser.json() );
 
-app.post( '/doc', function( req, res ){
+app.post( '/testdoc', function( req, res ){
   res.contentType( 'application/json; charset=utf-8' );
-  console.log( 'POST /doc' );
+  console.log( 'POST /testdoc' );
   //console.log( req.body );
   if( db ){
     var text = req.body.text;
@@ -61,14 +61,119 @@ app.post( '/doc', function( req, res ){
 
     var doc = {};
     doc.created = doc.updated = ( new Date() ).getTime();
+    doc.type = 'test';
     doc.filename = imgname;
     doc.text = text;
-    doc['_attachments'] = {
+    doc.body = {};
+    doc.body['_attachments'] = {
       file: {
         content_type : type,
         data: bin64
       }
     };
+
+    db.insert( doc, function( err, body ){
+      fs.unlink( path, function( e ){} );
+      if( err ){
+        res.status( 400 );
+        res.write( JSON.stringify( { status: false, message: err }, 2, null ) );
+        res.end();
+      }else{
+        res.write( JSON.stringify( { status: true, message: body }, 2, null ) );
+        res.end();
+      }
+    });
+  }else{
+    res.status( 400 );
+    res.write( JSON.stringify( { status: false, message: 'db is failed to initialize.' }, 2, null ) );
+    res.end();
+  }
+});
+
+app.get( '/testdoc/:id/attachment', function( req, res ){
+  res.contentType( 'application/json; charset=utf-8' );
+  var id = req.params.id;
+  console.log( 'GET /testdoc/' + id + '/attachment' );
+  if( db ){
+    db.get( id, { include_docs: true }, function( err, body ){
+      if( err ){
+        res.status( 400 );
+        res.write( JSON.stringify( { status: false, message: err }, 2, null ) );
+        res.end();
+      }else{
+        //. body._attachments.(attachname) : { content_type: '', data: '' }
+        if( body.body && body.body._attachments ){
+          for( key in body.body._attachments ){
+            var attachment = body.body._attachments[key];
+            var data64 = null;
+            if( attachment.content_type ){
+              res.contentType( attachment.content_type );
+              data64 = attachment.data;
+            }
+
+            if( data64 ){
+              var buf = Buffer.from( data64, 'base64' );
+              res.end( buf, 'binary' );
+            }else{
+              res.contentType( 'application/json; charset=utf-8' );
+              res.status( 400 );
+              res.write( JSON.stringify( { status: false, message: 'No data found.' }, 2, null ) );
+              res.end();
+            }
+
+/*
+            //. 添付画像バイナリを取得する
+            db.attachment.get( id, key, function( err, buf ){
+              if( err ){
+                res.contentType( 'application/json; charset=utf-8' );
+                res.status( 400 );
+                res.write( JSON.stringify( { status: false, message: err }, 2, null ) );
+                res.end();
+              }else{
+                res.end( buf, 'binary' );
+              }
+            });
+*/
+          }
+        }else{
+          res.status( 400 );
+          res.write( JSON.stringify( { status: false, message: 'No attachment found.' }, 2, null ) );
+          res.end();
+        }
+      }
+    });
+  }else{
+    res.status( 400 );
+    res.write( JSON.stringify( { status: false, message: 'db is failed to initialize.' }, 2, null ) );
+    res.end();
+  }
+});
+
+app.post( '/doc', function( req, res ){
+  res.contentType( 'application/json; charset=utf-8' );
+  console.log( 'POST /doc' );
+  //console.log( req.body );
+  if( db ){
+    var text = req.body.text;
+    var doc = {};
+    doc.created = doc.updated = ( new Date() ).getTime();
+    doc.text = text;
+    if( req.file && req.file.path ){
+      var path = req.file.path;
+      var type = req.file.mimetype;
+      var imgname = req.file.originalname;
+
+      var bin = fs.readFileSync( path );
+      var bin64 = new Buffer( bin ).toString( 'base64' );
+
+      doc.filename = imgname;
+      doc['_attachments'] = {
+        file: {
+          content_type : type,
+          data: bin64
+        }
+      };
+    }
 
     db.insert( doc, function( err, body ){
       fs.unlink( path, function( e ){} );
